@@ -1,0 +1,77 @@
+# Arcade, local private regtest, pointed at the single-node regtest Teranode (see docker-compose.yml).
+mode: all
+log_level: debug          # surface datahub health-probe + fetch details during the M1 spike
+
+network: regtest          # private/local; no P2P discovery, no public seeds
+
+api:
+  host: 0.0.0.0
+  port: 8080
+
+health:
+  port: 8081
+
+# Standalone profile: in-memory kafka bus + on-disk pebble store (no external infra).
+kafka:
+  backend: memory
+  consumer_group: arcade
+
+store:
+  backend: pebble
+  pebble:
+    path: /data/pebble
+
+# The single regtest teranode is the only DataHub. Arcade hits <url>/health, /tx, /txs,
+# and /block/<hash> here (asset server). P2P discovery off (teranode runs P2P disabled).
+datahub_urls:
+  - "http://teranode1:8090/api/v1"
+
+teranode:
+  auth_token: ""
+
+p2p:
+  datahub_discovery: false
+  # Dial our single regtest teranode directly for chaintracks header sync (feeds
+  # resolveChaintracksBootstrapPeers). teranode1 P2P on :9905, fixed peer-id.
+  bootstrap_peers:
+    - "/dns4/teranode1/tcp/9905/p2p/12D3KooWAFXWuxgdJoRsaA4J4RRRr8yu6WCrAPf8FaS7UfZg3ceG"
+
+# Serve /chaintracks/v2/* if the regtest build allows it (the demo's SPV header source);
+# if regtest auto-disables it, headers come from the teranode RPC instead (M2 fallback).
+chaintracks_server:
+  enabled: true
+
+# Our BOLT txs are 0-fee; accept them at intake (teranode regtest also accepts zero-fee).
+validator:
+  accept_zero_fee: true
+
+# Merkle Service â€” the BUMP source. Arcade registers each broadcast tx (txid, callback_url) with the
+# merkle-service, which watches teranode over P2P + fetches subtrees from the datahub, then POSTs
+# STUMP + BLOCK_PROCESSED back to callback_url so Arcade's bump-builder emits the merklePath. All
+# intra-docker on teranode-network-regtest â€” no public callback tunnel (unlike teratestnet).
+callback_url: "http://arcade:8080/api/v1/merkle-service/callback"
+callback_token: "e4ca973c4ef06bb393f886c8665a93183c876114dcd2468e499470e52eab6b85"
+merkle_service:
+  url: "http://merkle-service:8080"
+  auth_token: ""
+
+# Callback/webhook SSRF guard: allow private IPs. The whole topology is intra-docker (callback_url
+# resolves to a private RFC1918 address), so the default-on guard otherwise blocks Arcade's own
+# callback/webhook delivery ("callback host resolves to a blocked address: dial 172.19.0.x").
+callback:
+  allow_private_ips: true
+
+# Widen the bump-builder grace window (default 30s). On a single laptop the LIVE STUMP (which carries
+# the parseable header on teranode v0.15.2) can arrive >30s after BLOCK_PROCESSED under merkle-service
+# load; if the bump-builder gives up first, the block falls to the watchdog /reprocess path whose
+# BlockMessage has NO header â†’ "header too short" â†’ no STUMP. A longer grace keeps it on the live path.
+bump_builder:
+  grace_window_ms: 120000
+
+# Disable the stale-block recovery watchdog. It reprocesses any block whose processed_at is still NULL after
+# stale_threshold_ms â€” but the /reprocess path reconstructs a BlockMessage with NO header, so on a single
+# laptop where merkle-service briefly falls behind on the (empty) maturity blocks, the watchdog floods it with
+# header-less reprocesses ("header too short"), a cascade that fully starves the LIVE STUMP path. We control
+# mining on a private regtest chain, so the live path (teranode v0.15.2 carries the header) is sufficient.
+watchdog:
+  enabled: false

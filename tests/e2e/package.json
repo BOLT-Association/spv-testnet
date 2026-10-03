@@ -1,0 +1,7 @@
+{
+  "name": "chainbrowsers-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": { "roundtrip": "node tx-roundtrip.mjs" },
+  "dependencies": { "@bsv/sdk": "^1.8.11" }
+}

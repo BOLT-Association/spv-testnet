@@ -1,0 +1,11 @@
+# merkle-service â€” LOCAL regtest override. Only the kafka subtree partition counts; everything else
+# (store, brokers, p2p, datahub, blob, allow-private-ips) comes from env vars (merged by viper).
+#
+# WHY: teranode's kafka is redpanda, which rejects merkle-service's default 24-partition grow
+# ("grow topic subtree-work to 24 partitions: INVALID_REQUEST â€¦ incompatible broker"); the block
+# processor's subtree-work PUBLISH to that 24-partition topic then never lands â†’ the subtree worker
+# gets no work â†’ zero STUMPs â†’ no BUMP. 1 partition is correct for a single-node regtest (low rate),
+# and these keys are NOT env-bindable in merkle-service (not in its explicit bindEnvVars map).
+kafka:
+  subtreeWorkPartitions: 1
+  subtreePartitions: 1

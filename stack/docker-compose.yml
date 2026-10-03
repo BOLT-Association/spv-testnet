@@ -1,0 +1,176 @@
+# ChainBrowsers regtest stack: private single-node Teranode (from genesis) + merkle-service + Arcade.
+# Browsers talk to Arcade (:ARCADE_API_PORT broadcast, :ARCADE_CHAINTRACKS_PORT headers) and the
+# Teranode asset server (:TERANODE_ASSET_PORT). Drive it with stack.ps1.
+
+networks:
+  chain:
+    name: chainbrowsers-net
+
+services:
+  postgres:
+    container_name: cb-postgres
+    image: postgres:17
+    networks: [chain]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: really_strong_password_change_me
+      POSTGRES_DB: postgres
+    ports: ["${POSTGRES_PORT}:5432"]
+    volumes:
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - postgres-data:/var/lib/postgresql/data   # holds the blockchain DB; without it `down` loses the chain
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  kafka-shared:
+    container_name: cb-kafka
+    # Pinned: redpanda:latest drifted to a build that SIGILLs on some CPUs.
+    image: redpandadata/redpanda:v25.2.1
+    networks: [chain]
+    mem_limit: 256m
+    command:
+      - redpanda start
+      - --smp 1
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://kafka-shared:9092
+      - --pandaproxy-addr 0.0.0.0:9093
+      - --advertise-pandaproxy-addr localhost:9093
+    volumes:
+      - ./data/kafka:/var/lib/kafka
+
+  aerospike-1:
+    container_name: cb-aerospike
+    image: aerospike/aerospike-server:8.1
+    networks: [chain]
+    command: --config-file /etc/aerospike.conf
+    volumes:
+      - ./config/aerospike/aerospike-1.conf:/etc/aerospike.conf:ro
+      - ./data/aerospike/logs:/var/log/aerospike
+      - ./data/aerospike/data:/opt/aerospike/data
+
+  teranode1:
+    container_name: cb-teranode1
+    image: ${TERANODE_IMAGE}
+    networks: [chain]
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka-shared: { condition: service_started }
+      aerospike-1: { condition: service_started }
+    entrypoint:
+      - /app/wait.sh
+      - aerospike-1
+      - "3100"
+      - "2"
+      - --
+      - /app/wait.sh
+      - postgres
+      - "5432"
+      - "0"
+      - --
+      - /app/wait.sh
+      - kafka-shared
+      - "9092"
+      - "0"
+      - --
+      - /app/teranode.run
+      - -localTestStartFromState=RUNNING
+    environment:
+      SETTINGS_CONTEXT: docker.teranode1.test   # resolves network = regtest
+      logLevel: INFO
+      # P2P ON so Arcade/merkle-service can follow blocks over libp2p; legacy sync stays off, so the
+      # node never talks to any public network.
+      startP2P: "true"
+      startLegacy: "false"
+      KAFKA_BLOCKS: blocks-teranode1
+      KAFKA_BLOCKS_FINAL: blocks-final-teranode1
+      KAFKA_INVALID_BLOCKS: invalid-blocks-teranode1
+      KAFKA_INVALID_SUBTREES: invalid-subtrees-teranode1
+      KAFKA_LEGACY_INV: legacy-inv-teranode1
+      KAFKA_REJECTEDTX: rejectedtx-teranode1
+      KAFKA_SUBTREES: subtrees-teranode1
+      KAFKA_TXMETA: txmeta-teranode1
+      KAFKA_VALIDATORTXS: validatortxs-teranode1
+    volumes:
+      # LF line endings are enforced by .gitattributes; CRLF breaks these inside Linux containers.
+      - ./config/settings.conf:/app/settings.conf:ro
+      - ./config/settings_test.conf:/app/settings_local.conf:ro
+      - ./data/teranode1/txstore:/app/data/txstore
+      - ./data/teranode1/subtreestore:/app/data/subtreestore
+      - ./data/teranode1/blockstore:/app/data/blockstore
+      - ./data/teranode1/subtree_quorum:/app/data/subtree_quorum
+      - ./data/teranode1/external:/app/data/external
+    ports:
+      - "${TERANODE_HEALTH_PORT}:8000"
+      - "${TERANODE_ASSET_PORT}:8090"
+      - "${TERANODE_RPC_PORT}:9292"
+
+  block-generator:
+    container_name: cb-block-generator
+    image: curlimages/curl:latest
+    networks: [chain]
+    depends_on: [teranode1]
+    volumes:
+      - ./scripts/generate-blocks.sh:/generate-blocks.sh:ro
+    # Mine 10 blocks from genesis (coinbase maturity), then one at a time. Disable with
+    # `stack.ps1 up -NoMine` for manual control (needed for reorg tests).
+    entrypoint: ["/generate-blocks.sh", "--host", "teranode1", "--generate", "--initialBlocks", "10"]
+    restart: "no"
+    profiles: ["mining"]
+
+  merkle-service:
+    container_name: cb-merkle-service
+    image: ${MERKLE_IMAGE}
+    networks: [chain]
+    depends_on:
+      postgres: { condition: service_healthy }
+      teranode1: { condition: service_started }
+    restart: on-failure
+    ports: ["${MERKLE_PORT}:8080"]
+    volumes:
+      - merkle-data:/data
+      - ./config/merkle.yaml:/merkle-config.yaml:ro
+    environment:
+      CONFIG_FILE: /merkle-config.yaml
+      MODE: all-in-one
+      LOG_LEVEL: info
+      API_PORT: "8080"
+      STORE_BACKEND: sql
+      STORE_SQL_DRIVER: postgres
+      STORE_SQL_DSN: postgres://postgres:really_strong_password_change_me@postgres:5432/postgres?sslmode=disable
+      KAFKA_BROKERS: kafka-shared:9092
+      P2P_NETWORK: regtest
+      # Peer id is pinned in config/settings.conf. (Quote-safe here; on Git Bash a raw `docker run`
+      # would mangle the leading slash, which is why this lives in compose.)
+      P2P_BOOTSTRAP_PEERS: /dns4/teranode1/tcp/9905/p2p/12D3KooWAFXWuxgdJoRsaA4J4RRRr8yu6WCrAPf8FaS7UfZg3ceG
+      BLOB_STORE_URL: file:///data/subtrees
+      DATAHUB_ALLOW_PRIVATE_IPS: "true"
+      CALLBACK_ALLOW_PRIVATE_IPS: "true"
+      DATAHUB_FALLBACK_URLS: http://teranode1:8090/api/v1
+
+  arcade:
+    container_name: cb-arcade
+    image: ${ARCADE_IMAGE}
+    networks: [chain]
+    depends_on: [merkle-service]
+    restart: on-failure
+    command: ["--config", "/config.yaml"]
+    volumes:
+      - ./config/arcade.yaml:/config.yaml:ro
+      - arcade-data:/data
+      - chaintracks-data:/root/.chaintracks
+    ports:
+      - "${ARCADE_API_PORT}:8080"
+      - "${ARCADE_HEALTH_PORT}:8081"
+      - "${ARCADE_CHAINTRACKS_PORT}:8083"
+
+volumes:
+  postgres-data:
+  merkle-data:
+  arcade-data:
+  chaintracks-data:
