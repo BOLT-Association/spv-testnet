@@ -3,7 +3,7 @@
 Local, private BSV regtest chain for testing SPV clients (wallets and browsers): **Teranode** (from genesis) + **merkle-service** + **Arcade**, driven by one script, with scripted end-to-end and reorg tests. Used by [BOLT-Association/ChainBrowsers](https://github.com/BOLT-Association/ChainBrowsers).
 
 ```
-SPV client ──ARC /tx──► Arcade ◄──callbacks── merkle-service ◄─libp2p/datahub─┐
+SPV client ─── /tx ───► Arcade ◄──callbacks── merkle-service ◄─libp2p/datahub─┐
           ◄─chaintracks─┘  (:8080 / :8083)                                    │
                                               Teranode regtest (RPC :29292, asset :28090) ──┘
 ```
