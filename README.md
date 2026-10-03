@@ -27,6 +27,7 @@ Images and ports are in `stack/.env` (override in `stack/.env.local`). Defaults 
 | Endpoint | URL |
 |---|---|
 | Arcade broadcast / status | `http://localhost:8080` (`POST /tx`, `GET /tx/:txid`) |
+| Arcade SSE (status push) | `http://localhost:8082/events?callbackToken=<token>` (`: keepalive` every 15 s; `status` events; `Last-Event-ID` replay). Only for txs submitted with `X-CallbackToken`. |
 | Arcade chaintracks (headers) | `http://localhost:8083/chaintracks/v2` (`/tip`, `/height`, `/header/height/{n}`, `/reorg/stream`) |
 | Teranode RPC | `http://localhost:29292` (bitcoin/bitcoin) |
 | Teranode asset server | `http://localhost:28090/api/v1` |

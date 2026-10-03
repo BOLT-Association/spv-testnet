@@ -168,6 +168,7 @@ services:
       - "${ARCADE_API_PORT}:8080"
       - "${ARCADE_HEALTH_PORT}:8081"
       - "${ARCADE_CHAINTRACKS_PORT}:8083"
+      - "${ARCADE_SSE_PORT}:8082"   # Server-Sent Events: GET /events?callbackToken=…
 
 volumes:
   postgres-data:

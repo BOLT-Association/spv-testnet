@@ -38,6 +38,7 @@ stack/scripts/generate-blocks.sh   background miner
 | 28090 | Asset server / DataHub at `/api/v1` |
 | 28000 | Teranode health |
 | 8080 / 8081 | Arcade API / health |
+| 8082 | Arcade SSE (`/events?callbackToken=<token>`; published as `ARCADE_SSE_PORT`) |
 | 8083 | Arcade chaintracks (`/chaintracks/v2`) |
 | 8086 | merkle-service |
 | 25433 | Postgres |
