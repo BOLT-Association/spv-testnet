@@ -16,8 +16,11 @@ Local regtest SPV test stack (Teranode + merkle-service + Arcade). See `README.m
 - **Teranode RPC quirks:** `getrawmempool` returns a placeholder hash (not a real mempool), so it cannot be polled to know a tx reached block assembly; `getblockcount` and `getblocktemplate` are unimplemented (use `getinfo`). That is why `tests/e2e/tx-roundtrip.mjs` keeps a sleep + retry.
 - `generate-blocks.sh` defaults to `INITIAL_BLOCKS=100`, but compose passes `--initialBlocks 10`, so `up` mines 10 (README is right). Coinbase maturity is 100 regardless; the round-trip test mines to height 110.
 
+- **Images are pinned by digest** in `stack/.env` (teranode, merkle-service, arcade; verified together Oct 2026). To upgrade, change all three, then `reset`, `up -NoMine`, and re-run reorg + roundtrip. Get digests from `docker image inspect <id> -f '{{json .RepoDigests}}'`.
+
 ## Operating tips
 
 - Waiting for the stack: poll Teranode RPC (`getinfo`) from bash rather than sleeping in PowerShell. `stack.ps1 rpc` throws if RPC is not up yet.
+- Don't pipe `stack.ps1 up` through `Select-Object -First N`: it ends the pipeline early and kills `up` partway.
 - Reorg test needs `up -NoMine`; it passes repeatedly on one chain without `reset`.
 - Quick check after changes: `reset`, `up -NoMine`, `node tests/reorg/reorg.mjs`, then `cd tests/e2e; npm run roundtrip`.
