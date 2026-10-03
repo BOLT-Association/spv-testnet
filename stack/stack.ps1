@@ -58,11 +58,26 @@ function Probe($label, $url) {
   catch { Write-Host ("{0,-22} DOWN {1}" -f $label, $url) -ForegroundColor Yellow }
 }
 
+# Arcade's chaintracks only learns headers from P2P block announcements and has no catch-up until the next
+# announcement, so blocks mined before its P2P link to Teranode is up are invisible to it. Hold `up` until
+# the link is connected so anything that mines right after `up` (e.g. the reorg test) is seen.
+function Wait-ArcadeP2P([int]$TimeoutSec = 120) {
+  Write-Host 'Waiting for Arcade P2P link to Teranode...' -NoNewline
+  $end = (Get-Date).AddSeconds($TimeoutSec)
+  while ((Get-Date) -lt $end) {
+    if ((Dc logs --no-color arcade 2>&1 | Out-String) -match 'All bootstrap peers connected') { Write-Host ' connected'; return }
+    Start-Sleep -Seconds 2
+  }
+  Write-Host ' timed out' -ForegroundColor Yellow
+  Write-Host 'Chaintracks may miss blocks mined now; it catches up on the next block.' -ForegroundColor Yellow
+}
+
 switch ($Command.ToLower()) {
   'up' {
     $profileArgs = if ($NoMine) { @() } else { @('--profile', 'mining') }
     Dc pull --ignore-buildable
     Dc @profileArgs up -d
+    Wait-ArcadeP2P
     Write-Host "`nStack starting. Check with: .\stack.ps1 status"
     Write-Host "  Teranode RPC  $RpcUrl (bitcoin/bitcoin)"
     Write-Host "  Asset server  http://localhost:$(Port TERANODE_ASSET_PORT)"
