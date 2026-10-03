@@ -42,10 +42,10 @@ cd ../reorg; node reorg.mjs                    # needs `up -NoMine`; invalidate,
 
 ## Status and known issues
 
-Verified on a fresh chain with `ghcr.io/bsv-blockchain/{teranode,arcade,merkle-service}:latest` (Oct 2026): clean boot, `reset`, `up -NoMine`, `down`/`up` keeps the chain, tx round trip with a valid BUMP, and one forced reorg with chaintracks following.
+Verified on a fresh chain with `ghcr.io/bsv-blockchain/{teranode,arcade,merkle-service}:latest` (Oct 2026): clean boot, `reset`, `up -NoMine`, `down`/`up` keeps the chain, tx round trip with a valid BUMP, and repeated forced reorgs on one chain with chaintracks following.
 
-- **A second reorg on the same chain stalls Teranode's `generate`.** After `invalidateblock`, `generate` can hit the node's 30 s RPC timeout and mine nothing. The first reorg after a `reset` works. Run `reset` between reorg tests until this is understood.
+- **Reorgs need long RPC timeouts (fixed).** After `invalidateblock`, Teranode's block assembly resets before `generate` can mine; with the default 30 s `rpc_timeout` `generate` timed out and mined nothing. `stack/config/settings.conf` now sets `rpc_timeout` (3m) and `blockassembly_generateTipWaitTimeout` (2m), and `tests/reorg/reorg.mjs` passes repeatedly on the same chain. Needs a `reset` + `up` once so the node picks up the settings.
 - **Coinbase maturity is 100 and not configurable.** It comes from the regtest chain params, not `settings.conf`; changing it needs a custom Teranode build. Mining 100 blocks is quick, so the one-off cost is small.
-- **Block mined right after a broadcast can miss the tx.** Block assembly picks it up a moment after Arcade reports it; the round-trip test waits and retries.
+- **Block mined right after a broadcast can miss the tx.** Block assembly picks it up a moment after Arcade reports it; the round-trip test waits and retries. Teranode's `getrawmempool` is a stub, so there is nothing reliable to poll instead.
 - **Teranode asset server logs a 401 every 30 s** to Arcade (`tier=unverified`). Not yet traced; nothing observed breaks because of it. Peer-auth only controls rate-limit tiers (`asset_peerAuthAllowlist`, `asset_httpRateLimit`).
 - Older merkle-service builds needed Teranode v0.15.2 to parse blocks; `latest` works together today. If proofs stop arriving, pin `TERANODE_IMAGE` in `stack/.env`.
