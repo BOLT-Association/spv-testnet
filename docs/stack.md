@@ -12,7 +12,7 @@ Everything lives under `stack/` and is driven by `stack/stack.ps1` (see the READ
 | `postgres`, `kafka-shared` (Redpanda), `aerospike-1` | upstream images | Teranode's backing stores |
 | `block-generator` | `curlimages/curl` | Optional miner (profile `mining`): 10 blocks, then keeps mining. Skipped by `up -NoMine` |
 
-Images and ports are in `stack/.env`; override in the gitignored `stack/.env.local`. The Teranode, merkle-service and Arcade images are pinned by `@sha256` digest to the combination verified together (Oct 2026).
+Images and ports are in `stack/.env`; override in the gitignored `stack/.env.local`. The Teranode, merkle-service and Arcade images are pinned by `@sha256` digest to the combination verified together (Oct 2026). The node runs `spv-testnet/teranode:regtest-h1`, built by compose from `stack/teranode/Dockerfile` on the pinned `TERANODE_IMAGE`: the same source commit with regtest's Genesis and Chronicle activation heights set to 1 (upstream: 100 and 200).
 
 ## Files
 

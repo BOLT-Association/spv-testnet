@@ -56,7 +56,13 @@ services:
 
   teranode1:
     container_name: cb-teranode1
-    image: ${TERANODE_IMAGE}
+    # The pinned Teranode with regtest's Genesis and Chronicle active from block 1 (teranode/Dockerfile;
+    # upstream regtest activates them at 100 and 200). Built from TERANODE_IMAGE on first `up`.
+    image: spv-testnet/teranode:regtest-h1
+    build:
+      context: ./teranode
+      args:
+        RUN_IMG: ${TERANODE_IMAGE}
     networks: [chain]
     depends_on:
       postgres: { condition: service_healthy }
